@@ -1,7 +1,7 @@
 use std::process::Command;
 
 fn main() {
-    let output = Command::new("chroot")
+    let output = Command::new("sudo chroot")
         .arg("testroot")
         .arg("/hello")
         .output()
