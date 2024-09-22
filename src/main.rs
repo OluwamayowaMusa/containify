@@ -7,5 +7,5 @@ fn main() {
         .output()
         .expect("Failed to execute command");
 
-    println!("{:?}", String::from_utf8(output.stdout).unwrap());
+    println!("{:?}", String::from_utf8(output.stderr));
 }
