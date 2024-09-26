@@ -1,1 +1,0 @@
-https://github.com/OluwamayowaMusa/alx-system_engineering-devops/raw/refs/heads/master/init.lua
