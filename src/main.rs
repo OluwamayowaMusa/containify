@@ -3,8 +3,16 @@ use sys_mount::UnmountFlags;
 use std::process::Command;
 use sys_mount::Mount;
 use std::env;
+use std::process;
 use std::os::unix::fs;
 use rustix::thread::{unshare, UnshareFlags};
+
+use cgroups_rs::hierarchies;
+use cgroups_rs::cgroup_builder::CgroupBuilder;
+use cgroups_rs::MaxValue;
+use cgroups_rs::CgroupPid;
+use cgroups_rs::Cgroup;
+
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -14,11 +22,11 @@ fn main() {
 
     match arg.as_str() {
         "run" => {
-            println!{"Runnning run"};
+            println!{"Runnning run with pid {}", process::id()};
             run();
         },
         "child" => {
-            println!("Running child");
+            println!("Running child with pid {}", process::id());
             child();
         },
         _ => panic!("No command matched: {}", arg)
@@ -43,6 +51,17 @@ fn run() {
 }
 
 fn child() {
+    let cgroup = set_control_group();
+
+    let mut private = Command::new("mount");
+    private.arg("--make-private");
+    private.arg("/");
+    private.status().expect("Unable to make private mount namespcae");
+
+    let mut change_hostname = Command::new("hostname");
+    change_hostname.arg("container");
+    change_hostname.status().expect("Unable to set new hostname");
+
     match fs::chroot("/home/vagrant/containify/fs_container/ubuntu/") {
         Ok(_) => {
             println!("Root changed successfully");
@@ -54,10 +73,6 @@ fn child() {
         Err(e) => println!("Error occured: {}", e),
 
     }
-
-    let mut change_hostname = Command::new("hostname");
-    change_hostname.arg("container");
-    change_hostname.status().unwrap();
 
     let mount_proc = Mount::builder()
         .fstype("proc")
@@ -71,7 +86,10 @@ fn child() {
             let mut cmd = Command::new("bash");
 
             match cmd.status() {
-                Ok(result) => println!("Okay in child, {}", result),
+                Ok(result) => {
+                    cgroup.delete().unwrap();
+                    println!("Okay in child, {}", result);
+                },
                 Err(error) => println!("Error in child, {}", error),
             }
         },
@@ -79,4 +97,20 @@ fn child() {
             println!("Unable to mount: {:?}", error);
         },
     }
+}
+
+fn set_control_group() -> Cgroup {
+    let cgroup_version = hierarchies::auto();
+
+    let cgroup = CgroupBuilder::new("containify/567893876gsvgsgvb")
+        .pid()
+            .maximum_number_of_processes(MaxValue::Value(20))
+            .done()
+        .build(cgroup_version).unwrap();
+    cgroup.set_notify_on_release(true).unwrap();
+    cgroup.add_task_by_tgid(CgroupPid::from(process::id() as u64)).unwrap();
+
+    println!("Set control group");
+
+    cgroup
 }
